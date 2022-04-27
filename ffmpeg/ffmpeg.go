@@ -104,12 +104,15 @@ func (t *Transcoder) Start(opts transcoder.Options) (<-chan transcoder.Progress,
 		return nil, fmt.Errorf("Failed starting transcoding (%s) with args (%s) with error %s", t.config.FfmpegBinPath, args, err)
 	}
 
-	if (t.config.ProgressEnabled && !t.config.Verbose) || (int(t.config.Timeout) > 0) {
+	if t.config.ProgressEnabled && !t.config.Verbose {
+
 		if t.config.ProgressEnabled {
 			go func() {
 				t.progress(stderrIn, out)
 			}()
 		}
+	}
+	if int(t.config.Timeout) > 0 {
 		done := make(chan error, 1)
 		go func() {
 			defer close(out)
@@ -118,8 +121,13 @@ func (t *Transcoder) Start(opts transcoder.Options) (<-chan transcoder.Progress,
 		}()
 		select {
 		case <-time.After(t.config.Timeout):
-			cmd.Process.Signal(syscall.SIGTERM)
-		case <-done:
+			err = cmd.Process.Signal(syscall.SIGINT)
+			if err != nil {
+				return nil, err
+			}
+			time.Sleep(3 * time.Second)
+
+		case err := <-done:
 			if err != nil {
 				return nil, err
 			}
